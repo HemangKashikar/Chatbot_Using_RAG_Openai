@@ -3,9 +3,13 @@ import uuid
 from datetime import datetime
 from openai import OpenAI
 
-client = OpenAI(api_key="your-openai-api-key")  # Replace with your key
+# Initialize OpenAI client
+client = OpenAI(api_key="Your_Key")  # Replace with your key
+
+# Initialize SQLite database
 conn = sqlite3.connect("complaints.db")
 cursor = conn.cursor()
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS complaints (
     complaint_id TEXT PRIMARY KEY,
@@ -17,19 +21,29 @@ CREATE TABLE IF NOT EXISTS complaints (
 )
 """)
 conn.commit()
+
+# Knowledge base
 knowledge_base = {
     "delayed delivery": "If your delivery is delayed by more than 7 days, you may be eligible for a full refund.",
     "refund policy": "Our refund policy allows you to request a return within 30 days of purchase, provided the item is unused.",
     "warranty": "All electronics come with a one-year warranty from the date of delivery."
 }
+
 def generate_response(prompt):
+    """
+    Generate a response using OpenAI's API.
+    """
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",  # or "gpt-4"
         messages=[{"role": "user", "content": prompt}],
         temperature=0.5,
     )
     return response.choices[0].message.content.strip()
+
 def create_complaint(data):
+    """
+    Create a complaint in the database.
+    """
     complaint_id = str(uuid.uuid4())[:8]
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute("""
@@ -40,6 +54,9 @@ def create_complaint(data):
     return complaint_id
 
 def get_complaint(complaint_id):
+    """
+    Retrieve a complaint from the database by ID.
+    """
     cursor.execute("SELECT * FROM complaints WHERE complaint_id = ?", (complaint_id,))
     row = cursor.fetchone()
     if row:
@@ -52,7 +69,11 @@ def get_complaint(complaint_id):
             "created_at": row[5]
         }
     return None
+
 def chat():
+    """
+    Interactive chatbot interface in the terminal.
+    """
     print("\nWelcome to the Complaint Chatbot. Type 'exit' to quit.")
     conversation_state = {"name": "", "phone": "", "email": "", "complaint_details": ""}
     
@@ -61,6 +82,8 @@ def chat():
         if user_input.lower() == "exit":
             print("Goodbye!")
             break
+        
+        # Check for complaint status requests
         if "status" in user_input.lower() or "complaint id" in user_input.lower():
             words = user_input.split()
             complaint_id = next((word for word in words if len(word) == 8), None)
@@ -78,26 +101,36 @@ def chat():
             else:
                 print("Please provide a valid complaint ID.")
             continue
+
+        # Check the knowledge base
         for keyword, response in knowledge_base.items():
             if keyword in user_input.lower():
                 print(f"Bot: {response}")
                 break
         else:
-            if not conversation_state["name"]:
-                conversation_state["name"] = input("Bot: What's your name? ").strip()
-            if not conversation_state["phone"]:
-                conversation_state["phone"] = input("Bot: Your phone number? ").strip()
-            if not conversation_state["email"]:
-                conversation_state["email"] = input("Bot: Your email address? ").strip()
-            if not conversation_state["complaint_details"]:
-                conversation_state["complaint_details"] = user_input
+            # Generate response using OpenAI if no match in knowledge base
+            ai_response = generate_response(user_input)
+            print(f"Bot: {ai_response}")
 
-            if all(conversation_state.values()):
-                complaint_id = create_complaint(conversation_state)
-                print(f"\nBot: Your complaint has been registered with ID: {complaint_id}")
-                # Reset for next complaint
-                conversation_state = {"name": "", "phone": "", "email": "", "complaint_details": ""}
-            else:
-                print("Bot: I'm collecting your complaint information...")
+            # Handle complaint registration if relevant
+            if "complaint" in user_input.lower() or "register" in user_input.lower():
+                if not conversation_state["name"]:
+                    conversation_state["name"] = input("Bot: What's your name? ").strip()
+                if not conversation_state["phone"]:
+                    conversation_state["phone"] = input("Bot: Your phone number? ").strip()
+                if not conversation_state["email"]:
+                    conversation_state["email"] = input("Bot: Your email address? ").strip()
+                if not conversation_state["complaint_details"]:
+                    conversation_state["complaint_details"] = user_input
+
+                if all(conversation_state.values()):
+                    complaint_id = create_complaint(conversation_state)
+                    print(f"\nBot: Your complaint has been registered with ID: {complaint_id}")
+                    # Reset for next complaint
+                    conversation_state = {"name": "", "phone": "", "email": "", "complaint_details": ""}
+                else:
+                    print("Bot: I'm collecting your complaint information...")
+
 if __name__ == "__main__":
-    chat(),
+    chat()
+1
